@@ -111,6 +111,8 @@ class FRCNN(object):
     #   检测图片
     #---------------------------------------------------#
     def detect_image(self, image, crop = False, count = False):
+        import time
+        t1 = time.time()
         #---------------------------------------------------#
         #   计算输入图片的高和宽
         #---------------------------------------------------#
@@ -132,9 +134,11 @@ class FRCNN(object):
         #   添加上batch_size维度
         #---------------------------------------------------------#
         image_data  = np.expand_dims(np.transpose(preprocess_input(np.array(image_data, dtype='float32')), (2, 0, 1)), 0)
+        t2 = time.time()
 
         with torch.no_grad():
             images = torch.from_numpy(image_data)
+            
             if self.cuda:
                 images = images.cuda()
             
@@ -143,12 +147,15 @@ class FRCNN(object):
             #   roi_scores    建议框的种类得分
             #   rois          建议框的坐标
             #-------------------------------------------------------------#
+            t3 = time.time()
             roi_cls_locs, roi_scores, rois, _ = self.net(images)
+            t_rpn = time.time()
             #-------------------------------------------------------------#
             #   利用classifier的预测结果对建议框进行解码，获得预测框
             #-------------------------------------------------------------#
             results = self.bbox_util.forward(roi_cls_locs, roi_scores, rois, image_shape, input_shape, 
                                                     nms_iou = self.nms_iou, confidence = self.confidence)
+            t4 = time.time()
             #---------------------------------------------------------#
             #   如果没有检测出物体，返回原图
             #---------------------------------------------------------#           
@@ -210,7 +217,12 @@ class FRCNN(object):
 
             label = '{} {:.2f}'.format(predicted_class, score)
             draw = ImageDraw.Draw(image)
-            label_size = draw.textsize(label, font)
+            #label_size = draw.textsize(label, font)
+
+            label_bbox = draw.textbbox((0,0), label, font=font)
+            label_size = (label_bbox[2] - label_bbox[0], label_bbox[3] - label_bbox[1])
+
+
             label = label.encode('utf-8')
             # print(label, top, left, bottom, right)
             
@@ -225,6 +237,10 @@ class FRCNN(object):
             draw.text(text_origin, str(label,'UTF-8'), fill=(0, 0, 0), font=font)
             del draw
 
+        print("time cost in unit(ms):")
+        print("preprocessing: ", (t2-t1) * 1000)
+        print("rpn: ", (t_rpn-t3) * 1000)
+        print("classifier: ", (t4-t_rpn) * 1000)
         return image
 
     def get_FPS(self, image, test_interval):
